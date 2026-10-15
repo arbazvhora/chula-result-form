@@ -69,6 +69,8 @@
     }
     .gu b { color: #8a5a00; }
     .gu .no { color: var(--danger); font-weight: 700; }
+    .next-steps { margin-top: 16px; margin-bottom: 0; }
+    .next-steps .wait { color: var(--muted); }
     .upload {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 6px; min-height: 120px; padding: 16px; text-align: center; cursor: pointer;
@@ -90,6 +92,13 @@
     }
     .file-ok .meta { flex: 1; min-width: 0; font-size: 14px; }
     .file-ok .meta div:first-child { font-weight: 600; overflow-wrap: anywhere; }
+    .deadline {
+      margin-top: 16px; padding: 12px 14px; border-radius: 10px;
+      background: #fff7e6; border: 1px solid #f1d9a6; font-size: 15px; font-weight: 600;
+    }
+    #closed { display: none; text-align: center; padding: 28px 18px; }
+    #closed .big-icon { font-size: 44px; }
+    #closed h2 { font-size: 20px; letter-spacing: 0; text-transform: none; color: var(--ink); margin: 10px 0 6px; }
     .file-ok button {
       width: auto; min-height: 36px; margin: 0; padding: 0 12px; font-size: 14px;
       background: transparent; color: var(--danger); border: 1px solid var(--line);
@@ -163,7 +172,15 @@
   </header>
 
   <div class="wrap">
+    <div class="card" id="closed">
+      <div class="big-icon">⏰</div>
+      <h2>ફોર્મ ભરવાની છેલ્લી તારીખ પૂરી થઈ ગઈ છે</h2>
+      <p class="hint">The last date to submit results has passed.</p>
+      <p class="hint" id="closedDate"></p>
+    </div>
+
     <form id="form" novalidate autocomplete="on">
+      <div class="deadline" id="deadline" style="display:none"></div>
       <div class="card">
         <h2>Family</h2>
         <div class="f" data-f="chulaNo">
@@ -245,6 +262,12 @@
             <div class="err">Pick the year.</div>
           </div>
         </div>
+        <div class="f" data-f="stream" id="streamBox" style="display:none">
+          <label class="req" for="stream" id="streamLabel">Stream</label>
+          <select id="stream"><option value="">Select</option></select>
+          <input id="streamOther" maxlength="60" placeholder="Course name, e.g. B.Sc Nursing" style="display:none; margin-top:8px">
+          <div class="err" id="streamErr">Choose the stream.</div>
+        </div>
         <div class="f" data-f="school">
           <label for="school">School / college</label>
           <input id="school" name="school" maxlength="150" autocapitalize="words">
@@ -309,7 +332,7 @@
         <div class="done">
           <div class="tick">✓</div>
           <h2>Result submitted</h2>
-          <p>Thank you. Please send this summary on WhatsApp.</p>
+          <p>આભાર! (Thank you.) Please send this summary on WhatsApp.</p>
         </div>
         <div class="ref"><span>Reference</span><b id="sRef"></b></div>
         <div class="ref"><span>Submitted</span><b id="sAt"></b></div>
@@ -320,6 +343,14 @@
         Send to WhatsApp
       </a>
       <p class="note">This opens WhatsApp with the details typed in. Just press send.</p>
+      <div class="gu next-steps">
+        <b>📲 હવે આગળ શું કરવું?</b><br>
+        1️⃣ ઉપરનું લીલું <b>Send to WhatsApp</b> બટન દબાવી મેસેજ મોકલો.<br>
+        2️⃣ <b>કારોબારી કમિટી</b> આપની માર્કશીટની ચકાસણી કરશે.<br>
+        3️⃣ ચકાસણી પછી કમિટી તરફથી <b>“ચકાસાઈ ગયું ✅”</b> મેસેજ આવશે —
+        ત્યારે જ આપનું ફોર્મ <b>પૂર્ણ</b> ગણાશે.<br>
+        <span class="wait">⏳ ત્યાં સુધી કમિટીના જવાબની રાહ જુઓ.</span>
+      </div>
       <button type="button" class="btn ghost" id="again">Submit another student</button>
     </section>
 
@@ -358,11 +389,93 @@
     var $ = function (id) { return document.getElementById(id); };
     var form = $('form');
 
+    // Mirrors Standards.streamsFor in the app. Results are ranked within a
+    // stream, so 12 Science and 12 General never compete.
+    var STREAMS = {
+      '11': ['Science', 'General'],
+      '12': ['Science', 'General'],
+      'Graduation': ['B.Com', 'B.Sc', 'B.A.', 'BBA', 'BCA', 'B.E. / B.Tech',
+        'B.Pharm', 'MBBS', 'BDS', 'B.Ed'],
+      'Post Graduation': ['M.Com', 'M.Sc', 'M.A.', 'MBA', 'MCA',
+        'M.E. / M.Tech', 'M.Pharm', 'MD / MS', 'M.Ed']
+    };
+    var STD_LABEL = {
+      'Graduation': 'Graduation (Bachelor)',
+      'Post Graduation': 'Post Graduation (Master)'
+    };
+    var OTHER = 'Other';
+
     $('jamat').textContent = BOOT.jamat;
     fill($('standard'), BOOT.standards);
+    Array.prototype.forEach.call($('standard').options, function (o) {
+      if (STD_LABEL[o.value]) o.textContent = STD_LABEL[o.value];
+    });
+
+    function isDegree(std) { return std === 'Graduation' || std === 'Post Graduation'; }
+
+    function showStreams() {
+      var std = $('standard').value;
+      var list = STREAMS[std];
+      var sel = $('stream');
+      sel.length = 1; // keep "Select"
+      $('streamOther').value = '';
+      $('streamOther').style.display = 'none';
+      if (!list) { $('streamBox').style.display = 'none'; return; }
+      list.forEach(function (v) {
+        var o = document.createElement('option');
+        o.value = o.textContent = v;
+        sel.appendChild(o);
+      });
+      if (isDegree(std)) {
+        var o = document.createElement('option');
+        o.value = OTHER;
+        o.textContent = 'Other (type it)';
+        sel.appendChild(o);
+      }
+      $('streamLabel').textContent = isDegree(std) ? 'Course' : 'Stream';
+      $('streamErr').textContent = isDegree(std) ? 'Choose or type the course.' : 'Choose Science or General.';
+      $('streamBox').style.display = 'block';
+    }
+    $('standard').addEventListener('change', showStreams);
+    $('stream').addEventListener('change', function () {
+      var other = this.value === OTHER;
+      $('streamOther').style.display = other ? 'block' : 'none';
+      if (other) $('streamOther').focus();
+    });
+
+    /** The stream to send: the picked one, the typed course, or ''. */
+    function streamValue() {
+      if (!STREAMS[$('standard').value]) return '';
+      var v = $('stream').value;
+      return v === OTHER ? $('streamOther').value.trim() : v;
+    }
     fill($('gender'), BOOT.genders);
     fill($('academicYear'), BOOT.years);
     $('dob').max = new Date().toISOString().slice(0, 10);
+
+    // Is the form still open? The server enforces the last date anyway; this
+    // only saves a parent filling everything in for nothing. If the check
+    // fails (no signal), the form simply stays usable.
+    function dmyDate(iso) {
+      var p = String(iso || '').split('-');
+      return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+    }
+    fetch(API + '?action=config', { credentials: 'omit', redirect: 'follow' })
+      .then(function (res) { return res.json(); })
+      .then(function (cfg) {
+        if (!cfg || !cfg.ok) return;
+        if (cfg.open === false) {
+          form.style.display = 'none';
+          $('closed').style.display = 'block';
+          if (cfg.deadline) {
+            $('closedDate').textContent = 'છેલ્લી તારીખ / Last date: ' + dmyDate(cfg.deadline);
+          }
+        } else if (cfg.deadline) {
+          $('deadline').textContent = '⏰ છેલ્લી તારીખ / Last date: ' + dmyDate(cfg.deadline);
+          $('deadline').style.display = 'block';
+        }
+      })
+      .catch(function () {});
 
     function fill(select, values) {
       values.forEach(function (v) {
@@ -519,6 +632,7 @@
       if (!d.city) bad.push('city');
       if (!d.standard) bad.push('standard');
       if (!d.academicYear) bad.push('academicYear');
+      if (STREAMS[d.standard] && !d.stream) bad.push('stream');
       if (!picked) {
         $('marksheetErr').textContent =
           'અસલ માર્કશીટ અપલોડ કરો. (Upload the original marksheet.)';
@@ -558,6 +672,7 @@
       e.preventDefault();
       $('banner').style.display = 'none';
       var d = data();
+      d.stream = streamValue();
       if (!check(d)) return;
       var btn = $('submit');
       btn.disabled = true;
@@ -613,7 +728,8 @@
         ['Address', address],
         ['City', r.city],
         ['Area', r.area],
-        ['Standard', r.standard],
+        ['Standard', STD_LABEL[r.standard] || r.standard],
+        [isDegree(r.standard) ? 'Course' : 'Stream', r.stream],
         ['Academic year', r.academicYear],
         ['School', r.school],
         ['Marks', marks(r.obtainedMarks) + ' / ' + marks(r.totalMarks)],
@@ -656,6 +772,7 @@
        'obtainedMarks', 'remarks'].forEach(function (id) { $(id).value = ''; });
       clearFile();
       $('academicYear').selectedIndex = 0;
+      showStreams();
       showPct();
       var btn = $('submit');
       btn.disabled = false;
