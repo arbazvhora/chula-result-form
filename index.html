@@ -63,6 +63,37 @@
       border: 1px solid var(--line); border-radius: 10px; background: #fff;
     }
     textarea { min-height: 80px; resize: vertical; }
+    .gu {
+      background: #fff7e6; border: 1px solid #f1d9a6; border-radius: 10px;
+      padding: 12px 14px; font-size: 15px; line-height: 1.6; margin-bottom: 12px;
+    }
+    .gu b { color: #8a5a00; }
+    .gu .no { color: var(--danger); font-weight: 700; }
+    .upload {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; min-height: 120px; padding: 16px; text-align: center; cursor: pointer;
+      border: 2px dashed var(--gold); border-radius: 12px; background: var(--gold-soft);
+      font-weight: 600; margin: 0;
+    }
+    .upload small { font-weight: 400; color: var(--muted); }
+    .upload .icon { font-size: 30px; line-height: 1; }
+    .invalid .upload { border-color: var(--danger); background: #fdecef; }
+    .file-ok {
+      display: none; align-items: center; gap: 12px; margin-top: 12px;
+      padding: 10px; border: 1px solid var(--line); border-radius: 10px;
+    }
+    .file-ok.show { display: flex; }
+    .file-ok img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+    .file-ok .pdf {
+      width: 64px; height: 64px; border-radius: 8px; background: #fdecef;
+      display: grid; place-items: center; font-weight: 800; color: var(--danger);
+    }
+    .file-ok .meta { flex: 1; min-width: 0; font-size: 14px; }
+    .file-ok .meta div:first-child { font-weight: 600; overflow-wrap: anywhere; }
+    .file-ok button {
+      width: auto; min-height: 36px; margin: 0; padding: 0 12px; font-size: 14px;
+      background: transparent; color: var(--danger); border: 1px solid var(--line);
+    }
     input:focus, select:focus, textarea:focus {
       outline: 2px solid var(--gold); outline-offset: 1px; border-color: var(--gold);
     }
@@ -142,7 +173,7 @@
           <div class="err">Enter your chula number.</div>
         </div>
         <div class="f" data-f="mobile">
-          <label for="mobile">Parent's mobile</label>
+          <label for="mobile">Mobile No</label>
           <input id="mobile" name="mobile" inputmode="numeric" maxlength="10" autocomplete="tel-national">
           <div class="err">Enter 10 digits, or leave it blank.</div>
         </div>
@@ -234,6 +265,33 @@
         <div class="f" data-f="remarks">
           <label for="remarks">Remarks</label>
           <textarea id="remarks" name="remarks" maxlength="300" placeholder="Grade, rank, anything else (optional)"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Marksheet</h2>
+        <div class="f" data-f="marksheet">
+          <div class="gu">
+            📄 ફક્ત <b>અસલ (ઓરિજિનલ) માર્કશીટ</b>નો ફોટો અથવા PDF અપલોડ કરો.<br>
+            <span class="no">❌ ઝેરોક્ષ (Xerox) માન્ય નથી.</span><br>
+            📷 આખી માર્કશીટ સ્પષ્ટ દેખાય તેવો ફોટો પાડો.
+          </div>
+          <label class="upload" for="marksheet" id="uploadBox">
+            <span class="icon">📷</span>
+            <span>Tap to take a photo or choose a file</span>
+            <small>ફોટો પાડો અથવા ફાઇલ પસંદ કરો · JPG, PNG અથવા PDF</small>
+          </label>
+          <input id="marksheet" type="file" accept="image/*,application/pdf" hidden>
+          <div class="file-ok" id="fileOk">
+            <img id="thumb" alt="">
+            <div class="pdf" id="pdfIcon">PDF</div>
+            <div class="meta">
+              <div id="fileName"></div>
+              <div class="hint" id="fileSize"></div>
+            </div>
+            <button type="button" id="removeFile">Remove</button>
+          </div>
+          <div class="err" id="marksheetErr">અસલ માર્કશીટ અપલોડ કરો. (Upload the original marksheet.)</div>
         </div>
       </div>
 
@@ -343,6 +401,106 @@
       if (f) f.classList.remove('invalid');
     });
 
+    // ------------------------------------------------------------ marksheet
+    // Photos are shrunk on the phone before upload: a raw 12-megapixel
+    // camera shot is 4-6 MB, too slow on mobile data, while 2000px on the
+    // long side keeps every printed mark legible.
+    var MAX_SIDE = 2000;
+    var MAX_PDF = 5 * 1024 * 1024;
+    var MAX_RAW = 8 * 1024 * 1024;
+    var picked = null;
+
+    function kb(bytes) {
+      return bytes > 1024 * 1024
+        ? (bytes / 1024 / 1024).toFixed(1) + ' MB'
+        : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    }
+
+    function setFileError(text) {
+      $('marksheetErr').textContent = text;
+      $('marksheet').closest('.f').classList.add('invalid');
+    }
+
+    $('marksheet').addEventListener('change', function () {
+      var file = this.files && this.files[0];
+      this.value = '';
+      if (!file) return;
+      var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      var isImage = /^image\//.test(file.type);
+      if (!isPdf && !isImage) {
+        setFileError('ફક્ત ફોટો અથવા PDF. (Only a photo or a PDF.)');
+        return;
+      }
+      if (isPdf && file.size > MAX_PDF) {
+        setFileError('PDF 5 MB થી નાની હોવી જોઈએ. (PDF must be under 5 MB.)');
+        return;
+      }
+      picked = file;
+      $('marksheet').closest('.f').classList.remove('invalid');
+      $('fileName').textContent = file.name || 'marksheet';
+      $('fileSize').textContent = kb(file.size);
+      $('thumb').style.display = isImage ? 'block' : 'none';
+      $('pdfIcon').style.display = isPdf ? 'grid' : 'none';
+      if (isImage) $('thumb').src = URL.createObjectURL(file);
+      $('uploadBox').style.display = 'none';
+      $('fileOk').classList.add('show');
+    });
+
+    function clearFile() {
+      picked = null;
+      $('thumb').removeAttribute('src');
+      $('fileOk').classList.remove('show');
+      $('uploadBox').style.display = 'flex';
+    }
+    $('removeFile').addEventListener('click', clearFile);
+
+    function readDataUrl(blob) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () { resolve(r.result); };
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    }
+
+    function shrink(file) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.width * scale);
+          c.height = Math.round(img.height * scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(function (b) { b ? resolve(b) : reject(); }, 'image/jpeg', 0.85);
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    /** The picked file as {name, type, data(base64)}, photos shrunk. */
+    function packFile(file) {
+      var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      var blob = isPdf
+        ? Promise.resolve(file)
+        // A format the browser cannot draw (some HEIC photos) goes up as-is
+        // if it is not too big.
+        : shrink(file).catch(function () {
+            if (file.size > MAX_RAW) throw new Error('too big');
+            return file;
+          });
+      return blob.then(function (b) {
+        return readDataUrl(b).then(function (url) {
+          return {
+            name: file.name || 'marksheet',
+            type: isPdf ? 'application/pdf' : (b.type || file.type || 'image/jpeg'),
+            data: String(url).split(',')[1]
+          };
+        });
+      });
+    }
+
     function data() {
       var out = {};
       Array.prototype.forEach.call(form.elements, function (el) {
@@ -361,6 +519,11 @@
       if (!d.city) bad.push('city');
       if (!d.standard) bad.push('standard');
       if (!d.academicYear) bad.push('academicYear');
+      if (!picked) {
+        $('marksheetErr').textContent =
+          'અસલ માર્કશીટ અપલોડ કરો. (Upload the original marksheet.)';
+        bad.push('marksheet');
+      }
       var t = num(d.totalMarks), o = num(d.obtainedMarks);
       if (!(t > 0)) bad.push('totalMarks');
       $('obtainedErr').textContent = 'Enter the marks obtained.';
@@ -373,8 +536,9 @@
         f.classList.toggle('invalid', bad.indexOf(f.dataset.f) >= 0);
       });
       if (bad.length) {
-        var first = document.querySelector('.invalid input, .invalid select');
+        var first = document.querySelector('.invalid input:not([type=file]), .invalid select');
         if (first) first.focus();
+        else document.querySelector('.invalid').scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       return bad.length === 0;
     }
@@ -397,25 +561,37 @@
       if (!check(d)) return;
       var btn = $('submit');
       btn.disabled = true;
-      btn.textContent = 'Submitting…';
+      btn.textContent = 'Uploading marksheet…';
       // text/plain keeps this a "simple" request: no CORS preflight, which
       // Apps Script cannot answer. Credentials are omitted, so the phone's
       // Google sign-ins never reach Google and the multi-account bug cannot
       // happen.
-      fetch(API, {
-        method: 'POST',
-        body: JSON.stringify(d),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        credentials: 'omit',
-        redirect: 'follow'
-      })
+      packFile(picked)
+        .catch(function () {
+          throw new Error('file');
+        })
+        .then(function (file) {
+          d.marksheet = file;
+          return fetch(API, {
+            method: 'POST',
+            body: JSON.stringify(d),
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            credentials: 'omit',
+            redirect: 'follow'
+          });
+        })
         .then(function (res) { return res.json(); })
         .then(function (out) {
           if (out && out.ok) showSummary(out.result);
           else fail(out && out.error);
         })
-        .catch(function () {
-          fail('Could not reach the server. Check your internet and try again.');
+        .catch(function (err) {
+          if (err && err.message === 'file') {
+            setFileError('આ ફાઇલ ખુલી નહીં. બીજો ફોટો પસંદ કરો. (Could not read this file; choose another photo.)');
+            fail('Could not read the marksheet file. Choose another photo.');
+          } else {
+            fail('Could not reach the server. Check your internet and try again.');
+          }
         });
     });
 
@@ -442,8 +618,9 @@
         ['School', r.school],
         ['Marks', marks(r.obtainedMarks) + ' / ' + marks(r.totalMarks)],
         ['Percentage', r.percentage + '%'],
-        ['Mobile', r.mobile],
+        ['Mobile No', r.mobile],
         ['Remarks', r.remarks],
+        ['Marksheet', r.marksheetUrl ? 'Uploaded ✓' : ''],
       ].filter(function (row) { return row[1]; });
 
       $('sRef').textContent = r.ref;
@@ -477,6 +654,7 @@
       // Keep the family details: the next student is usually a sibling.
       ['firstName', 'dob', 'gender', 'standard', 'school', 'totalMarks',
        'obtainedMarks', 'remarks'].forEach(function (id) { $(id).value = ''; });
+      clearFile();
       $('academicYear').selectedIndex = 0;
       showPct();
       var btn = $('submit');
